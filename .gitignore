@@ -1,0 +1,20 @@
+# Go build artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+/bin/
+/pkg/
+/vendor/ # If you're not vendoring dependencies into the repository
+
+# macOS system files
+.DS_Store
+.Trashes
+.Spotlight-V100
+.TemporaryItems
+
+# Temp files
+.tmp/*
+coupon_codes/*
