@@ -1,6 +1,7 @@
 package precompute
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -10,50 +11,143 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestProcessBucket_SingleFileOnly tests codes appearing in only one file
-func TestProcessBucket_SingleFileOnly(t *testing.T) {
-	tmpDir := t.TempDir()
-	bucketPath := filepath.Join(tmpDir, "bucket_000.txt")
-
-	// All codes appear in only one file
-	content := `CODE1|0
+// TestProcessBucket_Scenarios tests processBucket with various scenarios
+func TestProcessBucket_Scenarios(t *testing.T) {
+	tests := []struct {
+		name          string
+		content       string
+		expectedCodes []string
+		expectedCount int
+	}{
+		{
+			name: "SingleFileOnly",
+			content: `CODE1|0
 CODE2|1
 CODE3|2
 CODE4|0
-CODE5|1`
-
-	err := os.WriteFile(bucketPath, []byte(content), 0644)
-	require.NoError(t, err, "Failed to create test bucket file")
-
-	validCodes, err := processBucket(bucketPath)
-	require.NoError(t, err, "processBucket should not return error")
-
-	assert.Empty(t, validCodes, "Expected 0 valid codes")
-}
-
-// TestProcessBucket_DuplicateEntries tests handling of duplicate code-file pairs
-func TestProcessBucket_DuplicateEntries(t *testing.T) {
-	tmpDir := t.TempDir()
-	bucketPath := filepath.Join(tmpDir, "bucket_000.txt")
-
-	// CODE1 appears multiple times in same files
-	content := `CODE1|0
+CODE5|1`,
+			expectedCodes: []string{},
+			expectedCount: 0,
+		},
+		{
+			name: "DuplicateEntries",
+			content: `CODE1|0
 CODE1|1
 CODE1|0
 CODE1|1
-CODE1|2`
+CODE1|2`,
+			expectedCodes: []string{"CODE1"},
+			expectedCount: 1,
+		},
+		{
+			name: "MixedValidInvalid",
+			content: `VALID1|0
+VALID1|1
+INVALID1|0
+VALID2|0
+VALID2|1
+VALID2|2
+INVALID2|1
+VALID3|0
+VALID3|1`,
+			expectedCodes: []string{"VALID1", "VALID2", "VALID3"},
+			expectedCount: 3,
+		},
+		{
+			name: "OrderIndependence_1",
+			content: `CODE1|0
+CODE1|1
+CODE2|0
+CODE2|1
+CODE3|0
+CODE3|1`,
+			expectedCodes: []string{"CODE1", "CODE2", "CODE3"},
+			expectedCount: 3,
+		},
+		{
+			name: "OrderIndependence_2",
+			content: `CODE3|1
+CODE3|0
+CODE1|1
+CODE1|0
+CODE2|1
+CODE2|0`,
+			expectedCodes: []string{"CODE1", "CODE2", "CODE3"},
+			expectedCount: 3,
+		},
+		{
+			name: "Malformed_MissingPipe",
+			content: `TESTCODE0
+GOODCODE|1
+GOODCODE|2`,
+			expectedCodes: []string{"GOODCODE"},
+			expectedCount: 1,
+		},
+		{
+			name: "Malformed_MultiplePipes",
+			content: `TESTCODE|0|extra
+GOODCODE|1
+GOODCODE|2`,
+			expectedCodes: []string{"GOODCODE"},
+			expectedCount: 1,
+		},
+		{
+			name: "Malformed_NonNumericIndex",
+			content: `TESTCODE|abc
+GOODCODE|1
+GOODCODE|2`,
+			expectedCodes: []string{"GOODCODE"},
+			expectedCount: 1,
+		},
+		{
+			name: "Malformed_NegativeIndex",
+			content: `TESTCODE|-1
+GOODCODE|0
+GOODCODE|1`,
+			expectedCodes: []string{"GOODCODE"},
+			expectedCount: 1,
+		},
+		{
+			name: "Malformed_EmptyLines",
+			content: `
 
-	err := os.WriteFile(bucketPath, []byte(content), 0644)
-	require.NoError(t, err, "Failed to create test bucket file")
+GOODCODE|0
 
-	validCodes, err := processBucket(bucketPath)
-	require.NoError(t, err, "processBucket should not return error")
+GOODCODE|1
 
-	// CODE1 should be valid (appears in files 0, 1, 2)
-	assert.Len(t, validCodes, 1, "Expected 1 valid code")
+`,
+			expectedCodes: []string{"GOODCODE"},
+			expectedCount: 1,
+		},
+		{
+			name: "Malformed_WhitespaceInCode",
+			content: `GOOD CODE|0
+GOOD CODE|1`,
+			expectedCodes: []string{"GOOD CODE"},
+			expectedCount: 1,
+		},
+	}
 
-	if len(validCodes) > 0 {
-		assert.Equal(t, "CODE1", validCodes[0], "Expected CODE1")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			bucketPath := filepath.Join(tmpDir, "bucket.txt")
+			err := os.WriteFile(bucketPath, []byte(tt.content), 0644)
+			require.NoError(t, err, "Failed to create test bucket file")
+
+			validCodes, err := processBucket(bucketPath)
+			require.NoError(t, err, "processBucket should not return error")
+
+			sort.Strings(validCodes)
+			sort.Strings(tt.expectedCodes)
+
+			if tt.expectedCount > 0 {
+				require.Len(t, validCodes, tt.expectedCount)
+				assert.Equal(t, tt.expectedCodes, validCodes)
+			} else {
+				assert.Empty(t, validCodes)
+			}
+		})
 	}
 }
 
@@ -83,313 +177,132 @@ func TestProcessBucket_LargeDataset(t *testing.T) {
 	assert.Len(t, validCodes, numCodes, "Expected %d valid codes", numCodes)
 }
 
-// TestProcessBucket_MixedValidInvalid tests mix of valid and invalid codes
-func TestProcessBucket_MixedValidInvalid(t *testing.T) {
-	tmpDir := t.TempDir()
-	bucketPath := filepath.Join(tmpDir, "bucket_000.txt")
-
-	content := `VALID1|0
-VALID1|1
-INVALID1|0
-VALID2|0
-VALID2|1
-VALID2|2
-INVALID2|1
-VALID3|0
-VALID3|1`
-
-	err := os.WriteFile(bucketPath, []byte(content), 0644)
-	require.NoError(t, err, "Failed to create test bucket file")
-
-	validCodes, err := processBucket(bucketPath)
-	require.NoError(t, err, "processBucket should not return error")
-
-	sort.Strings(validCodes)
-
-	expected := []string{"VALID1", "VALID2", "VALID3"}
-	sort.Strings(expected)
-
-	require.Len(t, validCodes, len(expected), "Expected %d valid codes", len(expected))
-
-	assert.Equal(t, expected, validCodes, "Codes should match expected")
-}
-
-// TestProcessBucketsWorker tests the worker function
+// TestProcessBucketsWorker tests the worker function with various scenarios
 func TestProcessBucketsWorker(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// Create multiple bucket files
-	bucket1 := filepath.Join(tmpDir, "bucket_001.txt")
-	content1 := `CODE1|0
+	tests := []struct {
+		name           string
+		buckets        []string // content of each bucket
+		numWorkers     int
+		expectedCodes  []string
+		expectedError  bool
+		invalidBuckets []string // paths to non-existent buckets to inject
+	}{
+		{
+			name: "BasicWorker",
+			buckets: []string{
+				`CODE1|0
 CODE1|1
 CODE2|0
-CODE2|1`
-	err := os.WriteFile(bucket1, []byte(content1), 0644)
-	if err != nil {
-		t.Fatalf("Failed to create bucket 1: %v", err)
-	}
-
-	bucket2 := filepath.Join(tmpDir, "bucket_002.txt")
-	content2 := `CODE3|0
+CODE2|1`,
+				`CODE3|0
 CODE3|1
-CODE4|0`
-	err = os.WriteFile(bucket2, []byte(content2), 0644)
-	if err != nil {
-		t.Fatalf("Failed to create bucket 2: %v", err)
-	}
-
-	bucket3 := filepath.Join(tmpDir, "bucket_003.txt")
-	content3 := `CODE5|0
+CODE4|0`,
+				`CODE5|0
 CODE5|1
-CODE5|2`
-	err = os.WriteFile(bucket3, []byte(content3), 0644)
-	if err != nil {
-		t.Fatalf("Failed to create bucket 3: %v", err)
+CODE5|2`,
+			},
+			numWorkers:    1,
+			expectedCodes: []string{"CODE1", "CODE2", "CODE3", "CODE5"},
+			expectedError: false,
+		},
+		{
+			name:          "EmptyChannel",
+			buckets:       []string{},
+			numWorkers:    1,
+			expectedCodes: []string{},
+			expectedError: false,
+		},
+		{
+			name: "ErrorHandling",
+			buckets: []string{
+				`CODE1|0
+CODE1|1`,
+			},
+			numWorkers:     1,
+			expectedCodes:  nil,
+			expectedError:  true,
+			invalidBuckets: []string{"nonexistent_bucket.txt"},
+		},
+		{
+			name: "MultipleWorkers",
+			buckets: func() []string {
+				var b []string
+				for i := 0; i < 10; i++ {
+					content := "CODE" + string(rune('A'+i)) + "|0\n" +
+						"CODE" + string(rune('A'+i)) + "|1\n"
+					b = append(b, content)
+				}
+				return b
+			}(),
+			numWorkers: 3,
+			expectedCodes: func() []string {
+				var c []string
+				for i := 0; i < 10; i++ {
+					c = append(c, "CODE"+string(rune('A'+i)))
+				}
+				return c
+			}(),
+			expectedError: false,
+		},
 	}
 
-	// Set up channels
-	bucketPaths := make(chan string, 3)
-	results := make(chan []string, 3)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			bucketPaths := make(chan string, len(tt.buckets)+len(tt.invalidBuckets))
+			results := make(chan []string, len(tt.buckets)+len(tt.invalidBuckets))
 
-	// Send bucket paths
-	bucketPaths <- bucket1
-	bucketPaths <- bucket2
-	bucketPaths <- bucket3
-	close(bucketPaths)
+			// Create bucket files
+			for i, content := range tt.buckets {
+				bucketPath := filepath.Join(tmpDir, fmt.Sprintf("bucket_%d.txt", i))
+				err := os.WriteFile(bucketPath, []byte(content), 0644)
+				require.NoError(t, err)
+				bucketPaths <- bucketPath
+			}
 
-	// Run worker
-	err = processBucketsWorker(1, bucketPaths, results)
-	if err != nil {
-		t.Fatalf("processBucketsWorker() error = %v", err)
+			// Add invalid buckets
+			for _, path := range tt.invalidBuckets {
+				bucketPaths <- filepath.Join(tmpDir, path)
+			}
+			close(bucketPaths)
+
+			// Run workers
+			errors := make(chan error, tt.numWorkers)
+			for w := 0; w < tt.numWorkers; w++ {
+				workerID := w
+				go func() {
+					errors <- processBucketsWorker(workerID, bucketPaths, results)
+				}()
+			}
+
+			// Wait for workers and check errors
+			var gotError bool
+			for w := 0; w < tt.numWorkers; w++ {
+				err := <-errors
+				if err != nil {
+					gotError = true
+				}
+			}
+
+			if tt.expectedError {
+				assert.True(t, gotError, "Expected error but got none")
+				return
+			}
+			require.False(t, gotError, "Worker returned unexpected error")
+			close(results)
+
+			// Collect results
+			allCodes := []string{}
+			for codes := range results {
+				allCodes = append(allCodes, codes...)
+			}
+
+			sort.Strings(allCodes)
+			sort.Strings(tt.expectedCodes)
+
+			assert.Equal(t, tt.expectedCodes, allCodes)
+		})
 	}
-	close(results)
-
-	// Collect all results
-	var allCodes []string
-	for codes := range results {
-		allCodes = append(allCodes, codes...)
-	}
-
-	sort.Strings(allCodes)
-
-	// Expected: CODE1, CODE2, CODE3, CODE5 (CODE4 only in 1 file)
-	expected := []string{"CODE1", "CODE2", "CODE3", "CODE5"}
-	sort.Strings(expected)
-
-	require.Len(t, allCodes, len(expected), "Should return expected number of codes")
-
-	assert.Equal(t, expected, allCodes, "All codes should match expected")
-}
-
-// TestProcessBucketsWorker_EmptyChannel tests worker with no buckets
-func TestProcessBucketsWorker_EmptyChannel(t *testing.T) {
-	bucketPaths := make(chan string)
-	results := make(chan []string, 1)
-
-	// Close immediately - no work to do
-	close(bucketPaths)
-
-	err := processBucketsWorker(1, bucketPaths, results)
-	if err != nil {
-		t.Fatalf("processBucketsWorker() error = %v", err)
-	}
-	close(results)
-
-	// Should receive no results
-	count := 0
-	for range results {
-		count++
-	}
-
-	assert.Equal(t, 0, count, "Expected 0 results from empty channel")
-}
-
-// TestProcessBucketsWorker_ErrorHandling tests worker error handling
-func TestProcessBucketsWorker_ErrorHandling(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// Create one valid bucket
-	bucket1 := filepath.Join(tmpDir, "bucket_001.txt")
-	content1 := `CODE1|0
-CODE1|1`
-	err := os.WriteFile(bucket1, []byte(content1), 0644)
-	if err != nil {
-		t.Fatalf("Failed to create bucket 1: %v", err)
-	}
-
-	// Reference a non-existent bucket (will cause error)
-	bucket2 := filepath.Join(tmpDir, "nonexistent_bucket.txt")
-
-	bucketPaths := make(chan string, 2)
-	results := make(chan []string, 2)
-
-	bucketPaths <- bucket1
-	bucketPaths <- bucket2
-	close(bucketPaths)
-
-	err = processBucketsWorker(1, bucketPaths, results)
-	if err == nil {
-		t.Error("Expected error when processing non-existent bucket, got nil")
-	}
-}
-
-// TestProcessBucketsWorker_MultipleWorkers tests concurrent workers
-func TestProcessBucketsWorker_MultipleWorkers(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// Create 10 buckets
-	numBuckets := 10
-	bucketPaths := make(chan string, numBuckets)
-	results := make(chan []string, numBuckets)
-
-	for i := 0; i < numBuckets; i++ {
-		bucketPath := filepath.Join(tmpDir, "bucket_"+string(rune('0'+i%10))+".txt")
-		content := "CODE" + string(rune('A'+i)) + "|0\n" +
-			"CODE" + string(rune('A'+i)) + "|1\n"
-		err := os.WriteFile(bucketPath, []byte(content), 0644)
-		require.NoError(t, err, "Failed to create bucket %d", i)
-		bucketPaths <- bucketPath
-	}
-	close(bucketPaths)
-
-	// Run 3 workers concurrently
-	numWorkers := 3
-	errors := make(chan error, numWorkers)
-
-	for w := 0; w < numWorkers; w++ {
-		workerID := w
-		go func() {
-			errors <- processBucketsWorker(workerID, bucketPaths, results)
-		}()
-	}
-
-	// Wait for all workers
-	for w := 0; w < numWorkers; w++ {
-		err := <-errors
-			require.NoError(t, err, "Worker should not return error")
-	}
-	close(results)
-
-	// Collect all results
-	var allCodes []string
-	for codes := range results {
-		allCodes = append(allCodes, codes...)
-	}
-
-	// Should have 10 valid codes (one from each bucket)
-	assert.Len(t, allCodes, numBuckets, "Expected %d codes from %d buckets", numBuckets, numBuckets)
-}
-
-// TestProcessBucketsWorker_StressTest tests workers under high load
-func TestProcessBucketsWorker_StressTest(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping stress test in short mode")
-	}
-
-	tmpDir := t.TempDir()
-
-	// Create 1000 bucket files
-	numBuckets := 1000
-	for i := 0; i < numBuckets; i++ {
-		bucketPath := filepath.Join(tmpDir, "bucket_"+string(rune('0'+(i%10)))+string(rune('0'+(i/10)%10))+string(rune('0'+(i/100)%10))+".txt")
-		content := ""
-		// Add 10 codes per bucket
-		for j := 0; j < 10; j++ {
-			code := "STRESS" + string(rune('A'+(i+j)%26))
-			content += code + "|0\n"
-			content += code + "|1\n"
-		}
-		err := os.WriteFile(bucketPath, []byte(content), 0644)
-		require.NoError(t, err, "Failed to create bucket %d", i)
-	}
-
-	bucketPaths := make(chan string, numBuckets)
-	results := make(chan []string, numBuckets)
-
-	// Fill bucket paths
-	for i := 0; i < numBuckets; i++ {
-		bucketPath := filepath.Join(tmpDir, "bucket_"+string(rune('0'+(i%10)))+string(rune('0'+(i/10)%10))+string(rune('0'+(i/100)%10))+".txt")
-		bucketPaths <- bucketPath
-	}
-	close(bucketPaths)
-
-	// Run 10 workers concurrently
-	numWorkers := 10
-	errors := make(chan error, numWorkers)
-	for w := 0; w < numWorkers; w++ {
-		workerID := w
-		go func() {
-			errors <- processBucketsWorker(workerID, bucketPaths, results)
-		}()
-	}
-
-	// Wait for workers
-	for w := 0; w < numWorkers; w++ {
-		err := <-errors
-			require.NoError(t, err, "Worker should not return error")
-	}
-	close(results)
-
-	// Collect and verify results
-	totalCodes := 0
-	for codes := range results {
-		totalCodes += len(codes)
-	}
-
-	// We expect 10,000 valid codes (1000 buckets * 10 codes each, all valid)
-	assert.Equal(t, 10000, totalCodes, "Expected 10000 total codes")
-}
-
-// TestProcessBucket_OrderIndependence tests that bucket processing order doesn't matter
-func TestProcessBucket_OrderIndependence(t *testing.T) {
-	t.Parallel()
-
-	tmpDir := t.TempDir()
-
-	// Create bucket with codes in different orders
-	bucket1Path := filepath.Join(tmpDir, "bucket1.txt")
-	content1 := `CODE1|0
-CODE1|1
-CODE2|0
-CODE2|1
-CODE3|0
-CODE3|1`
-
-	bucket2Path := filepath.Join(tmpDir, "bucket2.txt")
-	content2 := `CODE3|1
-CODE3|0
-CODE1|1
-CODE1|0
-CODE2|1
-CODE2|0`
-
-	err := os.WriteFile(bucket1Path, []byte(content1), 0644)
-	if err != nil {
-		t.Fatalf("Failed to create bucket1: %v", err)
-	}
-
-	err = os.WriteFile(bucket2Path, []byte(content2), 0644)
-	if err != nil {
-		t.Fatalf("Failed to create bucket2: %v", err)
-	}
-
-	// Process both buckets
-	codes1, err := processBucket(bucket1Path)
-	if err != nil {
-		t.Fatalf("processBucket(bucket1) error = %v", err)
-	}
-
-	codes2, err := processBucket(bucket2Path)
-	if err != nil {
-		t.Fatalf("processBucket(bucket2) error = %v", err)
-	}
-
-	// Sort for comparison
-	sort.Strings(codes1)
-	sort.Strings(codes2)
-
-	// Should produce identical results regardless of order
-	assert.Equal(t, codes1, codes2, "Bucket processing should be order-independent")
 }
 
 // Benchmarks

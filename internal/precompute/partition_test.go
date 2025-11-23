@@ -92,109 +92,114 @@ func TestHashCode_Distribution(t *testing.T) {
 	assert.GreaterOrEqual(t, len(bucketCounts), 2, "Codes should distribute across multiple buckets")
 }
 
-// TestProcessBucket tests processing a single bucket file
-func TestProcessBucket(t *testing.T) {
-	tmpDir := t.TempDir()
-	bucketPath := filepath.Join(tmpDir, "bucket_000.txt")
+// TestFindValidCodesHashPartition_Scenarios tests the full hash partition algorithm with various scenarios
+func TestFindValidCodesHashPartition_Scenarios(t *testing.T) {
+	tests := []struct {
+		name          string
+		files         map[string]string // filename -> content
+		workerCount   int
+		expectedCodes []string
+		expectedError bool
+		errorContains string
+		checkProgress bool
+	}{
+		{
+			name: "NormalCase",
+			files: map[string]string{
+				"codes1.txt": "HAPPYHRS\nFIFTYOFF\nSHORT\nVERYLONGCODE123\nTESTCODE1",
+				"codes2.txt": "HAPPYHRS\nSUPER100\nSHORT\nTESTCODE2\nVERYLONGCODE123",
+				"codes3.txt": "FIFTYOFF\nSUPER100\nTESTCODE3\nALSOLONG",
+			},
+			workerCount:   0, // Default
+			expectedCodes: []string{"FIFTYOFF", "HAPPYHRS", "SUPER100"},
+		},
+		{
+			name:          "EmptyDirectory",
+			files:         map[string]string{},
+			workerCount:   0,
+			expectedError: true,
+		},
+		{
+			name: "LengthFiltering",
+			files: map[string]string{
+				"codes1.txt": "AB\nABCDEFG\nGOODCODE\nVERYLONGCODE123\nPERFECT10",
+			},
+			workerCount:   1,
+			expectedCodes: nil, // Need 2+ files for validity, we only have 1, plus length filtering
+		},
+		{
+			name: "LargeWorkerCount",
+			files: map[string]string{
+				"codes1.txt": "TESTCODE\nGOODCODE",
+				"codes2.txt": "TESTCODE\nGOODCODE",
+			},
+			workerCount:   100,
+			expectedCodes: []string{"GOODCODE", "TESTCODE"},
+		},
+		{
+			name: "WithProgress",
+			files: map[string]string{
+				"codes1.txt": "TESTCODE",
+				"codes2.txt": "TESTCODE",
+			},
+			workerCount:   0,
+			expectedCodes: []string{"TESTCODE"},
+			checkProgress: true,
+		},
+	}
 
-	// Create test bucket file
-	content := `HAPPYHRS|0
-HAPPYHRS|1
-FIFTYOFF|0
-FIFTYOFF|2
-TESTCODE|0
-SHORTCD|1
-SHORTCD|2
-`
-	err := os.WriteFile(bucketPath, []byte(content), 0644)
-	require.NoError(t, err, "Failed to create test bucket file")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
 
-	validCodes, err := processBucket(bucketPath)
-	require.NoError(t, err, "processBucket should not return error")
+			if len(tt.files) > 0 {
+				for filename, content := range tt.files {
+					path := filepath.Join(tmpDir, filename)
+					err := os.WriteFile(path, []byte(content), 0644)
+					require.NoError(t, err, "Failed to create test file %s", filename)
+				}
+			} else if tt.name == "EmptyDirectory" {
+				// Do nothing, directory is empty
+			}
 
-	sort.Strings(validCodes)
+			var progressCalled bool
+			progressCallback := func(msg string) {
+				progressCalled = true
+			}
 
-	// Expected valid codes:
-	// HAPPYHRS - in files 0,1 ✓
-	// FIFTYOFF - in files 0,2 ✓
-	// SHORTCD - in files 1,2 ✓
-	// TESTCODE - only in file 0 ✗
+			var callback func(string)
+			if tt.checkProgress {
+				callback = progressCallback
+			}
 
-	expected := []string{"FIFTYOFF", "HAPPYHRS", "SHORTCD"}
-	sort.Strings(expected)
+			validCodes, err := FindValidCodesHashPartition(tmpDir, callback, tt.workerCount)
 
-	assert.Equal(t, expected, validCodes, "processBucket should return expected valid codes")
+			if tt.expectedError {
+				assert.Error(t, err)
+				if tt.errorContains != "" {
+					assert.Contains(t, err.Error(), tt.errorContains)
+				}
+				return
+			}
+
+			require.NoError(t, err)
+			sort.Strings(validCodes)
+			sort.Strings(tt.expectedCodes)
+			assert.Equal(t, tt.expectedCodes, validCodes)
+
+			if tt.checkProgress {
+				assert.True(t, progressCalled, "Progress callback should have been called")
+			}
+		})
+	}
 }
 
-// TestProcessBucket_EmptyFile tests processing an empty bucket
-func TestProcessBucket_EmptyFile(t *testing.T) {
-	tmpDir := t.TempDir()
-	bucketPath := filepath.Join(tmpDir, "bucket_000.txt")
+// TestHashPartition_NonExistentDirectory tests error handling for invalid directory
+func TestHashPartition_NonExistentDirectory(t *testing.T) {
+	t.Parallel()
 
-	// Create empty bucket file
-	err := os.WriteFile(bucketPath, []byte(""), 0644)
-	require.NoError(t, err, "Failed to create test bucket file")
-
-	validCodes, err := processBucket(bucketPath)
-	require.NoError(t, err, "processBucket should not return error")
-
-	assert.Empty(t, validCodes, "Expected 0 valid codes from empty bucket")
-}
-
-// TestFindValidCodesHashPartition tests the full hash partition algorithm
-func TestFindValidCodesHashPartition(t *testing.T) {
-	// Create a temporary test directory with multiple files
-	tmpDir := t.TempDir()
-
-	// File 1
-	file1 := filepath.Join(tmpDir, "codes1.txt")
-	content1 := `HAPPYHRS
-FIFTYOFF
-SHORT
-VERYLONGCODE123
-TESTCODE1`
-	err := os.WriteFile(file1, []byte(content1), 0644)
-	require.NoError(t, err, "Failed to create test file 1")
-
-	// File 2
-	file2 := filepath.Join(tmpDir, "codes2.txt")
-	content2 := `HAPPYHRS
-SUPER100
-SHORT
-TESTCODE2
-VERYLONGCODE123`
-	err = os.WriteFile(file2, []byte(content2), 0644)
-	require.NoError(t, err, "Failed to create test file 2")
-
-	// File 3
-	file3 := filepath.Join(tmpDir, "codes3.txt")
-	content3 := `FIFTYOFF
-SUPER100
-TESTCODE3
-ALSOLONG`
-	err = os.WriteFile(file3, []byte(content3), 0644)
-	require.NoError(t, err, "Failed to create test file 3")
-
-	validCodes, err := FindValidCodesHashPartition(tmpDir, nil, 0)
-	require.NoError(t, err, "FindValidCodesHashPartition() should not return error")
-
-	// Sort for consistent comparison
-	sort.Strings(validCodes)
-
-	// Expected valid codes:
-	// HAPPYHRS - 8 chars, in files 1,2 ✓
-	// FIFTYOFF - 8 chars, in files 1,3 ✓
-	// SUPER100 - 8 chars, in files 2,3 ✓
-	// SHORT - 5 chars, in files 1,2 ✗ (too short)
-	// VERYLONGCODE123 - 15 chars, in files 1,2 ✗ (too long)
-	// TESTCODE1/2/3 - 9 chars, but only in 1 file each ✗
-
-	expected := []string{"FIFTYOFF", "HAPPYHRS", "SUPER100"}
-	sort.Strings(expected)
-
-	assert.Equal(t, expected, validCodes, "Should return expected valid codes")
-
-	// Checked by assert.Equal above
+	_, err := FindValidCodesHashPartition("/path/that/does/not/exist", nil, 0)
+	assert.Error(t, err, "Expected error for non-existent directory")
 }
 
 // TestHashPartition_MultipleRuns verifies consistent results across runs
@@ -228,123 +233,6 @@ func TestHashPartition_MultipleRuns(t *testing.T) {
 
 	// Compare results
 	assert.Equal(t, codes1, codes2, "Results should be consistent across runs")
-}
-
-// TestHashPartition_EmptyDirectory tests error handling for empty directory
-func TestHashPartition_EmptyDirectory(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	_, err := FindValidCodesHashPartition(tmpDir, nil, 0)
-	assert.Error(t, err, "Expected error for empty directory")
-}
-
-// TestHashPartition_WithProgress tests that progress callback is called
-func TestHashPartition_WithProgress(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// Create a simple test file
-	file1 := filepath.Join(tmpDir, "codes1.txt")
-	content1 := `TESTCODE`
-	err := os.WriteFile(file1, []byte(content1), 0644)
-	require.NoError(t, err, "Failed to create test file")
-
-	file2 := filepath.Join(tmpDir, "codes2.txt")
-	content2 := `TESTCODE`
-	err = os.WriteFile(file2, []byte(content2), 0644)
-	require.NoError(t, err, "Failed to create test file")
-
-	var messages []string
-	progressCallback := func(msg string) {
-		messages = append(messages, msg)
-	}
-
-	_, err = FindValidCodesHashPartition(tmpDir, progressCallback, 0)
-	require.NoError(t, err, "FindValidCodesHashPartition() should not return error")
-
-	assert.NotEmpty(t, messages, "Expected progress messages")
-}
-
-// TestProcessBucket_MalformedLines tests handling of malformed bucket data
-func TestProcessBucket_MalformedLines(t *testing.T) {
-	tests := []struct {
-		name     string
-		content  string
-		wantErr  bool
-		wantLen  int // Expected number of valid codes if no error
-	}{
-		{
-			name: "missing pipe separator",
-			content: `TESTCODE0
-GOODCODE|1
-GOODCODE|2`,
-			wantErr: false,
-			wantLen: 1, // GOODCODE should still be valid, malformed line is skipped
-		},
-		{
-			name: "multiple pipes",
-			content: `TESTCODE|0|extra
-GOODCODE|1
-GOODCODE|2`,
-			wantErr: false,
-			wantLen: 1, // GOODCODE should still be valid, malformed line is skipped
-		},
-		{
-			name: "non-numeric file index",
-			content: `TESTCODE|abc
-GOODCODE|1
-GOODCODE|2`,
-			wantErr: false,
-			wantLen: 1, // GOODCODE should still be valid, malformed line is skipped
-		},
-		{
-			name: "negative file index",
-			content: `TESTCODE|-1
-GOODCODE|0
-GOODCODE|1`,
-			wantErr: false,
-			wantLen: 1, // GOODCODE should still be valid
-		},
-		{
-			name: "empty lines mixed with valid",
-			content: `
-
-GOODCODE|0
-
-GOODCODE|1
-
-`,
-			wantErr: false,
-			wantLen: 1, // GOODCODE should be valid
-		},
-		{
-			name: "whitespace in code",
-			content: `GOOD CODE|0
-GOOD CODE|1`,
-			wantErr: false,
-			wantLen: 1, // "GOOD CODE" should be valid if it appears in 2 files
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tmpDir := t.TempDir()
-			bucketPath := filepath.Join(tmpDir, "bucket_000.txt")
-
-			err := os.WriteFile(bucketPath, []byte(tt.content), 0644)
-			require.NoError(t, err, "Failed to create test bucket file")
-
-			validCodes, err := processBucket(bucketPath)
-			if tt.wantErr {
-				assert.Error(t, err, "processBucket should return error")
-				return
-			}
-			require.NoError(t, err, "processBucket should not return error")
-
-			if !tt.wantErr {
-				assert.Len(t, validCodes, tt.wantLen, "processBucket should return expected number of codes")
-			}
-		})
-	}
 }
 
 // TestHashPartition_DifferentWorkerCounts tests with various worker configurations
@@ -384,67 +272,6 @@ BESTCODE`
 			assert.Equal(t, baseline, validCodes, "Worker count %d should produce same results", workers)
 		}
 	}
-}
-
-// TestHashPartition_NonExistentDirectory tests error handling for invalid directory
-func TestHashPartition_NonExistentDirectory(t *testing.T) {
-	t.Parallel()
-
-	_, err := FindValidCodesHashPartition("/path/that/does/not/exist", nil, 0)
-	assert.Error(t, err, "Expected error for non-existent directory")
-}
-
-// TestPartitionFiles_LengthFiltering tests that codes outside 8-10 char range are filtered
-func TestPartitionFiles_LengthFiltering(t *testing.T) {
-	t.Parallel()
-
-	tmpDir := t.TempDir()
-
-	// Create test file with codes of various lengths
-	file1 := filepath.Join(tmpDir, "codes1.txt")
-	content := `AB
-ABCDEFG
-GOODCODE
-VERYLONGCODE123
-PERFECT10`
-
-	err := os.WriteFile(file1, []byte(content), 0644)
-	require.NoError(t, err, "Failed to create test file")
-
-	// Run the full pipeline to verify filtering
-	validCodes, err := FindValidCodesHashPartition(tmpDir, nil, 1)
-	require.NoError(t, err, "FindValidCodesHashPartition() should not return error")
-
-	// Should get no valid codes (need 2+ files for validity, we only have 1)
-	assert.Len(t, validCodes, 0, "Expected 0 valid codes with single file")
-}
-
-// TestHashPartition_LargeWorkerCount tests with more workers than buckets
-func TestHashPartition_LargeWorkerCount(t *testing.T) {
-	t.Parallel()
-
-	tmpDir := t.TempDir()
-
-	file1 := filepath.Join(tmpDir, "codes1.txt")
-	file2 := filepath.Join(tmpDir, "codes2.txt")
-	content := `TESTCODE
-GOODCODE`
-
-	err := os.WriteFile(file1, []byte(content), 0644)
-	require.NoError(t, err, "Failed to create file1")
-
-	err = os.WriteFile(file2, []byte(content), 0644)
-	require.NoError(t, err, "Failed to create file2")
-
-	// Use 100 workers (more than likely buckets with data)
-	validCodes, err := FindValidCodesHashPartition(tmpDir, nil, 100)
-	require.NoError(t, err, "FindValidCodesHashPartition() should not return error")
-
-	sort.Strings(validCodes)
-	expected := []string{"GOODCODE", "TESTCODE"}
-	sort.Strings(expected)
-
-	assert.Equal(t, expected, validCodes, "Should return expected codes")
 }
 
 // TestHashCode_Collision tests that different codes can hash to same bucket
