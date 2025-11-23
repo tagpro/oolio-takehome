@@ -151,7 +151,7 @@ ALSOLONG`
 		t.Fatalf("Failed to create test file 3: %v", err)
 	}
 
-	validCodes, err := FindValidCodesHashPartition(tmpDir, nil)
+	validCodes, err := FindValidCodesHashPartition(tmpDir, nil, 0)
 	if err != nil {
 		t.Fatalf("FindValidCodesHashPartition() error = %v", err)
 	}
@@ -205,12 +205,12 @@ func TestHashPartition_MultipleRuns(t *testing.T) {
 	}
 
 	// Run hash partition twice
-	codes1, err := FindValidCodesHashPartition(tmpDir, nil)
+	codes1, err := FindValidCodesHashPartition(tmpDir, nil, 0)
 	if err != nil {
 		t.Fatalf("FindValidCodesHashPartition() run 1 error = %v", err)
 	}
 
-	codes2, err := FindValidCodesHashPartition(tmpDir, nil)
+	codes2, err := FindValidCodesHashPartition(tmpDir, nil, 0)
 	if err != nil {
 		t.Fatalf("FindValidCodesHashPartition() run 2 error = %v", err)
 	}
@@ -240,7 +240,7 @@ func TestHashPartition_MultipleRuns(t *testing.T) {
 func TestHashPartition_EmptyDirectory(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	_, err := FindValidCodesHashPartition(tmpDir, nil)
+	_, err := FindValidCodesHashPartition(tmpDir, nil, 0)
 	if err == nil {
 		t.Error("Expected error for empty directory, got nil")
 	}
@@ -270,7 +270,7 @@ func TestHashPartition_WithProgress(t *testing.T) {
 		messages = append(messages, msg)
 	}
 
-	_, err = FindValidCodesHashPartition(tmpDir, progressCallback)
+	_, err = FindValidCodesHashPartition(tmpDir, progressCallback, 0)
 	if err != nil {
 		t.Fatalf("FindValidCodesHashPartition() error = %v", err)
 	}

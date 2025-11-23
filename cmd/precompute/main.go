@@ -45,7 +45,7 @@ func main() {
 
 	// Find valid codes using hash partition
 	startTime := time.Now()
-	validCodes, err := precompute.FindValidCodesHashPartition(*inputDir, progressCallback)
+	validCodes, err := precompute.FindValidCodesHashPartition(*inputDir, progressCallback, 0) // 0 = auto-detect workers
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "\nError: %v\n", err)
 		os.Exit(1)
