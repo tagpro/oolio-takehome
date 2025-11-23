@@ -17,8 +17,8 @@ const (
 	numBuckets = 1000
 
 	// Scanner buffer sizes for reading files
-	scannerInitialBuffer = 64 * 1024    // 64 KB
-	scannerMaxBuffer     = 1024 * 1024  // 1 MB
+	scannerInitialBuffer = 64 * 1024   // 64 KB
+	scannerMaxBuffer     = 1024 * 1024 // 1 MB
 
 	// Progress reporting interval for partitioning phase
 	progressReportInterval = 10_000_000 // Report every 10M codes
@@ -32,8 +32,8 @@ func hashCode(code string, numBuckets int) int {
 }
 
 // FindValidCodesHashPartition uses hash-based partitioning to find valid promo codes.
-// This approach partitions codes into buckets, processes each bucket independently,
-// and is designed for speed and bounded memory usage.
+// This approach partitions codes into buckets, processes each bucket independently.
+//
 // A code is valid if:
 // 1. It appears in at least 2 files
 // 2. Its length is between 8 and 10 characters (inclusive)

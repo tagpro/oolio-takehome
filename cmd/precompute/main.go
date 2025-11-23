@@ -13,6 +13,7 @@ func main() {
 	// Define command-line flags
 	inputDir := flag.String("input", "", "Directory containing coupon code files (required)")
 	outputFile := flag.String("output", "valid_codes.txt", "Output file path (default: valid_codes.txt)")
+	workers := flag.Int("workers", 0, "Number of worker goroutines to use (default: auto-detect based on CPU cores)")
 	flag.Parse()
 
 	// Validate input
@@ -45,7 +46,7 @@ func main() {
 
 	// Find valid codes using hash partition
 	startTime := time.Now()
-	validCodes, err := precompute.FindValidCodesHashPartition(*inputDir, progressCallback, 0) // 0 = auto-detect workers
+	validCodes, err := precompute.FindValidCodesHashPartition(*inputDir, progressCallback, *workers)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "\nError: %v\n", err)
 		os.Exit(1)

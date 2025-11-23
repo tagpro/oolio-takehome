@@ -3,9 +3,11 @@ package precompute
 import (
 	"os"
 	"path/filepath"
-	"reflect"
 	"sort"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestProcessBucket_SingleFileOnly tests codes appearing in only one file
@@ -21,18 +23,12 @@ CODE4|0
 CODE5|1`
 
 	err := os.WriteFile(bucketPath, []byte(content), 0644)
-	if err != nil {
-		t.Fatalf("Failed to create test bucket file: %v", err)
-	}
+	require.NoError(t, err, "Failed to create test bucket file")
 
 	validCodes, err := processBucket(bucketPath)
-	if err != nil {
-		t.Fatalf("processBucket() error = %v", err)
-	}
+	require.NoError(t, err, "processBucket should not return error")
 
-	if len(validCodes) != 0 {
-		t.Errorf("Expected 0 valid codes, got %d: %v", len(validCodes), validCodes)
-	}
+	assert.Empty(t, validCodes, "Expected 0 valid codes")
 }
 
 // TestProcessBucket_DuplicateEntries tests handling of duplicate code-file pairs
@@ -48,22 +44,16 @@ CODE1|1
 CODE1|2`
 
 	err := os.WriteFile(bucketPath, []byte(content), 0644)
-	if err != nil {
-		t.Fatalf("Failed to create test bucket file: %v", err)
-	}
+	require.NoError(t, err, "Failed to create test bucket file")
 
 	validCodes, err := processBucket(bucketPath)
-	if err != nil {
-		t.Fatalf("processBucket() error = %v", err)
-	}
+	require.NoError(t, err, "processBucket should not return error")
 
 	// CODE1 should be valid (appears in files 0, 1, 2)
-	if len(validCodes) != 1 {
-		t.Errorf("Expected 1 valid code, got %d", len(validCodes))
-	}
+	assert.Len(t, validCodes, 1, "Expected 1 valid code")
 
-	if len(validCodes) > 0 && validCodes[0] != "CODE1" {
-		t.Errorf("Expected CODE1, got %s", validCodes[0])
+	if len(validCodes) > 0 {
+		assert.Equal(t, "CODE1", validCodes[0], "Expected CODE1")
 	}
 }
 
@@ -84,19 +74,13 @@ func TestProcessBucket_LargeDataset(t *testing.T) {
 	}
 
 	err := os.WriteFile(bucketPath, []byte(content), 0644)
-	if err != nil {
-		t.Fatalf("Failed to create test bucket file: %v", err)
-	}
+	require.NoError(t, err, "Failed to create test bucket file")
 
 	validCodes, err := processBucket(bucketPath)
-	if err != nil {
-		t.Fatalf("processBucket() error = %v", err)
-	}
+	require.NoError(t, err, "processBucket should not return error")
 
 	// All 1,000 codes should be valid
-	if len(validCodes) != numCodes {
-		t.Errorf("Expected %d valid codes, got %d", numCodes, len(validCodes))
-	}
+	assert.Len(t, validCodes, numCodes, "Expected %d valid codes", numCodes)
 }
 
 // TestProcessBucket_MixedValidInvalid tests mix of valid and invalid codes
@@ -115,30 +99,19 @@ VALID3|0
 VALID3|1`
 
 	err := os.WriteFile(bucketPath, []byte(content), 0644)
-	if err != nil {
-		t.Fatalf("Failed to create test bucket file: %v", err)
-	}
+	require.NoError(t, err, "Failed to create test bucket file")
 
 	validCodes, err := processBucket(bucketPath)
-	if err != nil {
-		t.Fatalf("processBucket() error = %v", err)
-	}
+	require.NoError(t, err, "processBucket should not return error")
 
 	sort.Strings(validCodes)
 
 	expected := []string{"VALID1", "VALID2", "VALID3"}
 	sort.Strings(expected)
 
-	if len(validCodes) != len(expected) {
-		t.Errorf("Expected %d valid codes, got %d", len(expected), len(validCodes))
-		return
-	}
+	require.Len(t, validCodes, len(expected), "Expected %d valid codes", len(expected))
 
-	for i, code := range expected {
-		if validCodes[i] != code {
-			t.Errorf("Expected code %s at position %d, got %s", code, i, validCodes[i])
-		}
-	}
+	assert.Equal(t, expected, validCodes, "Codes should match expected")
 }
 
 // TestProcessBucketsWorker tests the worker function
@@ -203,18 +176,9 @@ CODE5|2`
 	expected := []string{"CODE1", "CODE2", "CODE3", "CODE5"}
 	sort.Strings(expected)
 
-	if len(allCodes) != len(expected) {
-		t.Errorf("Expected %d codes, got %d", len(expected), len(allCodes))
-		t.Errorf("Expected: %v", expected)
-		t.Errorf("Got: %v", allCodes)
-		return
-	}
+	require.Len(t, allCodes, len(expected), "Should return expected number of codes")
 
-	for i, code := range expected {
-		if allCodes[i] != code {
-			t.Errorf("Expected code %s at position %d, got %s", code, i, allCodes[i])
-		}
-	}
+	assert.Equal(t, expected, allCodes, "All codes should match expected")
 }
 
 // TestProcessBucketsWorker_EmptyChannel tests worker with no buckets
@@ -237,9 +201,7 @@ func TestProcessBucketsWorker_EmptyChannel(t *testing.T) {
 		count++
 	}
 
-	if count != 0 {
-		t.Errorf("Expected 0 results from empty channel, got %d", count)
-	}
+	assert.Equal(t, 0, count, "Expected 0 results from empty channel")
 }
 
 // TestProcessBucketsWorker_ErrorHandling tests worker error handling
@@ -285,9 +247,7 @@ func TestProcessBucketsWorker_MultipleWorkers(t *testing.T) {
 		content := "CODE" + string(rune('A'+i)) + "|0\n" +
 			"CODE" + string(rune('A'+i)) + "|1\n"
 		err := os.WriteFile(bucketPath, []byte(content), 0644)
-		if err != nil {
-			t.Fatalf("Failed to create bucket %d: %v", i, err)
-		}
+		require.NoError(t, err, "Failed to create bucket %d", i)
 		bucketPaths <- bucketPath
 	}
 	close(bucketPaths)
@@ -305,9 +265,8 @@ func TestProcessBucketsWorker_MultipleWorkers(t *testing.T) {
 
 	// Wait for all workers
 	for w := 0; w < numWorkers; w++ {
-		if err := <-errors; err != nil {
-			t.Fatalf("Worker error: %v", err)
-		}
+		err := <-errors
+			require.NoError(t, err, "Worker should not return error")
 	}
 	close(results)
 
@@ -318,10 +277,7 @@ func TestProcessBucketsWorker_MultipleWorkers(t *testing.T) {
 	}
 
 	// Should have 10 valid codes (one from each bucket)
-	if len(allCodes) != numBuckets {
-		t.Errorf("Expected %d codes from %d buckets, got %d",
-			numBuckets, numBuckets, len(allCodes))
-	}
+	assert.Len(t, allCodes, numBuckets, "Expected %d codes from %d buckets", numBuckets, numBuckets)
 }
 
 // TestProcessBucketsWorker_StressTest tests workers under high load
@@ -344,9 +300,7 @@ func TestProcessBucketsWorker_StressTest(t *testing.T) {
 			content += code + "|1\n"
 		}
 		err := os.WriteFile(bucketPath, []byte(content), 0644)
-		if err != nil {
-			t.Fatalf("Failed to create bucket %d: %v", i, err)
-		}
+		require.NoError(t, err, "Failed to create bucket %d", i)
 	}
 
 	bucketPaths := make(chan string, numBuckets)
@@ -371,9 +325,8 @@ func TestProcessBucketsWorker_StressTest(t *testing.T) {
 
 	// Wait for workers
 	for w := 0; w < numWorkers; w++ {
-		if err := <-errors; err != nil {
-			t.Fatalf("Worker error: %v", err)
-		}
+		err := <-errors
+			require.NoError(t, err, "Worker should not return error")
 	}
 	close(results)
 
@@ -384,9 +337,7 @@ func TestProcessBucketsWorker_StressTest(t *testing.T) {
 	}
 
 	// We expect 10,000 valid codes (1000 buckets * 10 codes each, all valid)
-	if totalCodes != 10000 {
-		t.Errorf("Expected 10000 total codes, got %d", totalCodes)
-	}
+	assert.Equal(t, 10000, totalCodes, "Expected 10000 total codes")
 }
 
 // TestProcessBucket_OrderIndependence tests that bucket processing order doesn't matter
@@ -438,10 +389,7 @@ CODE2|0`
 	sort.Strings(codes2)
 
 	// Should produce identical results regardless of order
-	if !reflect.DeepEqual(codes1, codes2) {
-		t.Errorf("Bucket processing not order-independent:\n  bucket1: %v\n  bucket2: %v",
-			codes1, codes2)
-	}
+	assert.Equal(t, codes1, codes2, "Bucket processing should be order-independent")
 }
 
 // Benchmarks
