@@ -28,6 +28,9 @@ The second step is to run the API server.
 
 We have a big dataset for promocodes spread across multiple files. What we want to do is to figure out all the valid codes and save them in a file for our API server to use.
 
+The way the pre-compute tool works is that it reads all the promocode files from a directory, and divides the promocodes into buckets. We create a hash from a code, and the modulus of the hash with the number of buckets gives us the bucket number. We put the code along with its file number in the corresponding bucket file.
+Next, we process buckets in parallel. For each bucket, we read all the codes and keep track of their occurrences. If a code appears more than one file, we mark it as valid. Finally, we write all the valid codes to the output file. Since buckets are completely independent, we can process them in parallel.
+
 To run the pre-compute tool, you need a directory with files containing the promocodes.
 We assume that the files are unzipped/gunzipped.
 
