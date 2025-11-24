@@ -70,7 +70,6 @@ func processBucket(bucketPath string) ([]string, error) {
 }
 
 func processBucketsWorker(id int, bucketPath <-chan string, results chan<- []string) error {
-	fmt.Println("Worker", id, "started")
 	processCount := 0
 	for path := range bucketPath {
 		processCount++
@@ -80,6 +79,5 @@ func processBucketsWorker(id int, bucketPath <-chan string, results chan<- []str
 		}
 		results <- validCodes
 	}
-	fmt.Println("Worker", id, "finished after processing", processCount, "buckets")
 	return nil
 }

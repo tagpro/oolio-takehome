@@ -3,11 +3,16 @@ module order-food-online
 go 1.25.3
 
 require (
+	github.com/go-chi/chi/v5 v5.2.3
+	github.com/google/uuid v1.6.0
+	github.com/mattn/go-sqlite3 v1.14.32
+	github.com/oapi-codegen/runtime v1.1.2
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/sync v0.18.0
 )
 
 require (
+	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dprotaso/go-yit v0.0.0-20220510233725-9ba8df137936 // indirect
 	github.com/getkin/kin-openapi v0.133.0 // indirect
