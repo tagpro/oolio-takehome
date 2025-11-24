@@ -50,7 +50,7 @@ test/coverage: test
 .PHONY: clean
 clean:
 	@echo "Cleaning up..."
-	rm -rf bin/
+	rm -rf bin/ tmp/
 	rm -f food.db
 	rm -f valid_codes.txt
 	rm -f cover.out
