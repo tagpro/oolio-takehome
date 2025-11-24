@@ -110,3 +110,4 @@ There are no integration tests or e2e tests.
 - There is an assumption that the valid promocodes is small enough to fit in memory. Another alternative approach is to load the promocodes into a database table and query it during order processing.
 - The product data is seeded with some sample data. In a real-world application, there would be an admin interface to manage products.
 - The database is connected using env variable `DB_PATH`. The valid codes are loaded using a input parameter `-promocodes`.
+- The way I imagine this application to be deployed is that the pre-compute tool is run as a pre-deployment step, just like database migration, to generate the valid codes. This is just an exercise so we are just emitting the codes in a file, but in a real-world application, we would create an indexed table in the database for the valid codes.
