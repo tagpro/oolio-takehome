@@ -38,7 +38,7 @@ build:
 .PHONY: test
 test:
 	@echo "Running tests..."
-	go test -race -covermode=atomic -coverprofile=cover.out -v ./...
+	go test -race -v ./...
 	@echo "Done."
 
 .PHONY: test/coverage
